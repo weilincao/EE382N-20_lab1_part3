@@ -72,7 +72,7 @@ INT32 Usage()
 namespace DL1
 {
     const UINT32 max_sets = KILO; // cacheSize / (lineSize * associativity);
-    const UINT32 max_associativity = 256; // associativity;
+    const UINT32 max_associativity = 16; // associativity;
     const CACHE_ALLOC::STORE_ALLOCATION allocation = CACHE_ALLOC::STORE_ALLOCATE;
 
     typedef CACHE_LRU(max_sets, max_associativity, allocation) CACHE;
@@ -325,7 +325,10 @@ int main(int argc, char *argv[])
     dl1 = new DL1::CACHE("L1 Data Cache", 
                          KnobCacheSize.Value() * KILO,
                          KnobLineSize.Value(),
-                         KnobAssociativity.Value());
+                         KnobAssociativity.Value(),
+                         2048*1024,
+                         64,
+                         16);
     
     profile.SetKeyName("iaddr          ");
     profile.SetCounterName("dcache:miss        dcache:hit");

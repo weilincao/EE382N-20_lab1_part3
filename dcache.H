@@ -218,17 +218,24 @@ class CACHE_BASE
     static const UINT32 HIT_MISS_NUM = 2;
     CACHE_STATS _access[ACCESS_TYPE_NUM][HIT_MISS_NUM];
     //added for L2 cache
-    CACHE_STATS _access_l2[ACCESS_TYPE_NUM][HIT_MISS_NUM];
+    CACHE_STATS _l2_access[ACCESS_TYPE_NUM][HIT_MISS_NUM];
 
   private:    // input params
     const std::string _name;
     const UINT32 _cacheSize;
     const UINT32 _lineSize;
     const UINT32 _associativity;
+    //added
+    const UINT32 _l2_cacheSize;
+    const UINT32 _l2_lineSize;
+    const UINT32 _l2_associativity;
 
     // computed params
     const UINT32 _lineShift;
     const UINT32 _setIndexMask;
+    //added
+    const UINT32 _l2_lineShift;
+    const UINT32 _l2_setIndexMask;
 
     CACHE_STATS SumAccess(bool hit) const
     {
@@ -246,8 +253,8 @@ class CACHE_BASE
     UINT32 NumSets() const { return _setIndexMask + 1; }
 
   public:
-    // constructors/destructors
-    CACHE_BASE(std::string name, UINT32 cacheSize, UINT32 lineSize, UINT32 associativity);
+    // constructors/destructors added
+    CACHE_BASE(std::string name, UINT32 cacheSize, UINT32 lineSize, UINT32 associativity, UINT32 l2_cacheSize, UINT32 l2_lineSize, UINT32 l2_associativity);
 
     // accessors
     UINT32 CacheSize() const { return _cacheSize; }
@@ -260,6 +267,13 @@ class CACHE_BASE
     CACHE_STATS Hits() const { return SumAccess(true);}
     CACHE_STATS Misses() const { return SumAccess(false);}
     CACHE_STATS Accesses() const { return Hits() + Misses();}
+
+    CACHE_STATS l2_Hits(ACCESS_TYPE accessType) const { return _l2_access[accessType][true];}
+    CACHE_STATS l2_Misses(ACCESS_TYPE accessType) const { return _l2_access[accessType][false];}
+    CACHE_STATS l2_Accesses(ACCESS_TYPE accessType) const { return Hits(accessType) + Misses(accessType);}
+    CACHE_STATS l2_Hits() const { return SumAccess(true);}
+    CACHE_STATS l2_Misses() const { return SumAccess(false);}
+    CACHE_STATS l2_Accesses() const { return Hits() + Misses();}
 
     VOID SplitAddress(const ADDRINT addr, CACHE_TAG & tag, UINT32 & setIndex) const
     {
@@ -277,13 +291,19 @@ class CACHE_BASE
     string StatsLong(string prefix = "", CACHE_TYPE = CACHE_TYPE_DCACHE) const;
 };
 
-CACHE_BASE::CACHE_BASE(std::string name, UINT32 cacheSize, UINT32 lineSize, UINT32 associativity)
+CACHE_BASE::CACHE_BASE(std::string name, UINT32 cacheSize, UINT32 lineSize, UINT32 associativity, UINT32 l2_cacheSize, UINT32 l2_lineSize, UINT32 l2_associativity)
   : _name(name),
     _cacheSize(cacheSize),
     _lineSize(lineSize),
-    _associativity(associativity),
+    _associativity(associativity),    
+    _l2_cacheSize(l2_cacheSize),
+    _l2_lineSize(l2_lineSize),
+    _l2_associativity(l2_associativity),
     _lineShift(FloorLog2(lineSize)),
-    _setIndexMask((cacheSize / (associativity * lineSize)) - 1)
+    _setIndexMask((cacheSize / (associativity * lineSize)) - 1),
+
+    _l2_lineShift(FloorLog2(l2_lineSize)),
+    _l2_setIndexMask((l2_cacheSize / (l2_associativity * l2_lineSize)) - 1)
 {
 
     ASSERTX(IsPower2(_lineSize));
@@ -293,6 +313,7 @@ CACHE_BASE::CACHE_BASE(std::string name, UINT32 cacheSize, UINT32 lineSize, UINT
     {
         _access[accessType][false] = 0;
         _access[accessType][true] = 0;
+
     }
 }
 
@@ -366,7 +387,7 @@ string CACHE_BASE::StatsLong(string prefix, CACHE_TYPE cache_type) const
            "  " +fltstr(100.0 * Misses() / Accesses(), 2, 6) + "%\n";
 
     out += prefix + ljstr("Total-Accesses:  ", headerWidth)
-           + mydecstr(Accesses(), numberWidth) +
+           + mydecstr(Accesses()+l2_Accesses(), numberWidth) +
            "  " +fltstr(100.0 * Accesses() / Accesses(), 2, 6) + "%\n";
     out += "\n";
 
@@ -388,8 +409,8 @@ class CACHE : public CACHE_BASE
 
   public:
     // constructors/destructors
-    CACHE(std::string name, UINT32 cacheSize, UINT32 lineSize, UINT32 associativity)
-      : CACHE_BASE(name, cacheSize, lineSize, associativity)
+    CACHE(std::string name, UINT32 cacheSize, UINT32 lineSize, UINT32 associativity,UINT32 l2_cacheSize, UINT32 l2_lineSize, UINT32 l2_associativity)
+      : CACHE_BASE(name, cacheSize, lineSize, associativity,l2_cacheSize, l2_lineSize, l2_associativity)
     {
         ASSERTX(NumSets() <= MAX_SETS);
 
