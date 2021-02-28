@@ -240,6 +240,7 @@ class CACHE_BASE
     CACHE_STATS SumAccess(bool hit, int cache_level) const
     {
         CACHE_STATS sum = 0;
+        /*
         if(cache_level == 1) {
           for (UINT32 accessType = 0; accessType < ACCESS_TYPE_NUM; accessType++)
           {
@@ -253,7 +254,7 @@ class CACHE_BASE
           }
         }
        
-
+        */
         return sum;
     }
 
@@ -378,6 +379,7 @@ string CACHE_BASE::StatsLong(string prefix, CACHE_TYPE cache_type) const
     }
 
     //added for L2 cache
+    /*
     out += prefix + "L2 Data Cache:" + "\n";
     if (cache_type != CACHE_TYPE_ICACHE) {
        for (UINT32 i = 0; i < ACCESS_TYPE_NUM; i++)
@@ -401,7 +403,7 @@ string CACHE_BASE::StatsLong(string prefix, CACHE_TYPE cache_type) const
            out += prefix + "\n";
        }
     }
-
+    */
     out += prefix + ljstr("Total-Hits:      ", headerWidth)
            + mydecstr(Hits(), numberWidth) +
            "  " +fltstr(100.0 * Hits() / Accesses(), 2, 6) + "%\n";
@@ -472,27 +474,14 @@ bool CACHE<SET,MAX_SETS,STORE_ALLOCATION>::Access(ADDRINT addr, UINT32 size, ACC
     const ADDRINT notLineMask = ~(lineSize - 1);
     do
     {
-        CACHE_TAG tag;
-        UINT32 setIndex;
-
-        SplitAddress(addr, tag, setIndex,1);
-
-        SET & set = _sets[setIndex];
-
-        bool localHit = set.Find(tag);
+        //bool localHit = AccessSingleLine(addr,accessType); //hit&miss are now counted inside AccessSingleLine function individually
+        bool localHit = true;
         allHit &= localHit;
-
-        // on miss, loads always allocate, stores optionally
-        if ( (! localHit) && (accessType == ACCESS_TYPE_LOAD || STORE_ALLOCATION == CACHE_ALLOC::STORE_ALLOCATE))
-        {
-            set.Replace(tag);
-        }
-
         addr = (addr & notLineMask) + lineSize; // start of next cache line
     }
     while (addr < highAddr);
 
-    _access[accessType][allHit]++;   //need to modify
+    //_access[accessType][allHit]++;
 
     return allHit;
 }
@@ -520,14 +509,41 @@ bool CACHE<SET,MAX_SETS,STORE_ALLOCATION>::AccessSingleLine(ADDRINT addr, ACCESS
 
     _access[accessType][hit]++;
 
+    return hit;
+    /*
+    CACHE_TAG tag;
+    UINT32 setIndex;
+    
+    CACHE_TAG l2_tag;
+    
+    SplitAddress(addr, tag, setIndex,1);
+
+    SET & set = _sets[setIndex];
+
+    bool hit = set.Find(tag);
+
+    // on miss, loads always allocate, stores optionally
+    if ( (! hit) && (accessType == ACCESS_TYPE_LOAD || STORE_ALLOCATION == CACHE_ALLOC::STORE_ALLOCATE))
+    {
+        
+        set.Replace(tag);
+        //bring L1 stuff into L2
+        UINT32 l2_setIndex;
+        SplitAddress(addr, l2_tag, l2_setIndex,2);
+        SET & l2_set = _l2_sets[l2_setIndex];
+        
+        bool l2_hit = l2_set.Find(l2_tag);
+        if(l2_hit==false)
+          l2_set.Replace(l2_tag);
+    }
+
+    _access[accessType][hit]++;
+
     //added
     if (hit == false) {
-      CACHE_TAG l2_tag;
       UINT32 l2_setIndex;
-
       SplitAddress(addr, l2_tag, l2_setIndex,2);
       SET & l2_set = _l2_sets[l2_setIndex];
-
       bool l2_hit = l2_set.Find(l2_tag);
       if ( (! l2_hit) && (accessType == ACCESS_TYPE_LOAD || STORE_ALLOCATION == CACHE_ALLOC::STORE_ALLOCATE))
       {
@@ -542,6 +558,7 @@ bool CACHE<SET,MAX_SETS,STORE_ALLOCATION>::AccessSingleLine(ADDRINT addr, ACCESS
     }
 
     return hit; //need to modify
+    */
 }
 
 // define shortcuts
