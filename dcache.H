@@ -237,20 +237,29 @@ class CACHE_BASE
     const UINT32 _l2_lineShift;
     const UINT32 _l2_setIndexMask;
 
-    CACHE_STATS SumAccess(bool hit) const
+    CACHE_STATS SumAccess(bool hit, int cache_level) const
     {
         CACHE_STATS sum = 0;
-
-        for (UINT32 accessType = 0; accessType < ACCESS_TYPE_NUM; accessType++)
-        {
+        if(cache_level == 1) {
+          for (UINT32 accessType = 0; accessType < ACCESS_TYPE_NUM; accessType++)
+          {
             sum += _access[accessType][hit];
+          }
         }
+        else if(cache_level == 2) {
+          for (UINT32 accessType = 0; accessType < ACCESS_TYPE_NUM; accessType++)
+          {
+            sum += _l2_access[accessType][hit];
+          }
+        }
+       
 
         return sum;
     }
 
   protected:
     UINT32 NumSets() const { return _setIndexMask + 1; }
+    UINT32 l2_NumSets() const { return _l2_setIndexMask + 1; }
 
   public:
     // constructors/destructors added
@@ -264,16 +273,16 @@ class CACHE_BASE
     CACHE_STATS Hits(ACCESS_TYPE accessType) const { return _access[accessType][true];}
     CACHE_STATS Misses(ACCESS_TYPE accessType) const { return _access[accessType][false];}
     CACHE_STATS Accesses(ACCESS_TYPE accessType) const { return Hits(accessType) + Misses(accessType);}
-    CACHE_STATS Hits() const { return SumAccess(true);}
-    CACHE_STATS Misses() const { return SumAccess(false);}
+    CACHE_STATS Hits() const { return SumAccess(true,1);}
+    CACHE_STATS Misses() const { return SumAccess(false,1);}
     CACHE_STATS Accesses() const { return Hits() + Misses();}
-
+    //added
     CACHE_STATS l2_Hits(ACCESS_TYPE accessType) const { return _l2_access[accessType][true];}
     CACHE_STATS l2_Misses(ACCESS_TYPE accessType) const { return _l2_access[accessType][false];}
-    CACHE_STATS l2_Accesses(ACCESS_TYPE accessType) const { return Hits(accessType) + Misses(accessType);}
-    CACHE_STATS l2_Hits() const { return SumAccess(true);}
-    CACHE_STATS l2_Misses() const { return SumAccess(false);}
-    CACHE_STATS l2_Accesses() const { return Hits() + Misses();}
+    CACHE_STATS l2_Accesses(ACCESS_TYPE accessType) const { return l2_Hits(accessType) + l2_Misses(accessType);}
+    CACHE_STATS l2_Hits() const { return SumAccess(true,2);}
+    CACHE_STATS l2_Misses() const { return SumAccess(false,2);}
+    CACHE_STATS l2_Accesses() const { return l2_Hits() + l2_Misses();}
 
     VOID SplitAddress(const ADDRINT addr, CACHE_TAG & tag, UINT32 & setIndex) const
     {
@@ -288,7 +297,7 @@ class CACHE_BASE
         SplitAddress(addr, tag, setIndex);
     }
 
-    string StatsLong(string prefix = "", CACHE_TYPE = CACHE_TYPE_DCACHE) const;
+    string StatsLong(string prefix = "", CACHE_TYPE = CACHE_MAX_SETSTYPE_DCACHE) const;
 };
 
 CACHE_BASE::CACHE_BASE(std::string name, UINT32 cacheSize, UINT32 lineSize, UINT32 associativity, UINT32 l2_cacheSize, UINT32 l2_lineSize, UINT32 l2_associativity)
@@ -313,6 +322,9 @@ CACHE_BASE::CACHE_BASE(std::string name, UINT32 cacheSize, UINT32 lineSize, UINT
     {
         _access[accessType][false] = 0;
         _access[accessType][true] = 0;
+        //added
+        _l2_access[accessType][false] = 0;
+        _l2_access[accessType][true] = 0;
 
     }
 }
@@ -406,6 +418,7 @@ class CACHE : public CACHE_BASE
 {
   private:
     SET _sets[MAX_SETS];
+    SET _l2_sets[MAX_SETS];
 
   public:
     // constructors/destructors
@@ -418,6 +431,12 @@ class CACHE : public CACHE_BASE
         {
             _sets[i].SetAssociativity(associativity);
         }
+        //added
+        for (UINT32 i = 0; i < l2_NumSets(); i++)
+        {
+            _l2_sets[i].SetAssociativity(l2_associativity);
+        }
+
     }
 
     // modifiers
@@ -461,7 +480,7 @@ bool CACHE<SET,MAX_SETS,STORE_ALLOCATION>::Access(ADDRINT addr, UINT32 size, ACC
     }
     while (addr < highAddr);
 
-    _access[accessType][allHit]++;
+    _access[accessType][allHit]++;   //need to modify
 
     return allHit;
 }
@@ -489,7 +508,28 @@ bool CACHE<SET,MAX_SETS,STORE_ALLOCATION>::AccessSingleLine(ADDRINT addr, ACCESS
 
     _access[accessType][hit]++;
 
-    return hit;
+    //added
+    if (hit == false) {
+      CACHE_TAG l2_tag;
+      UINT32 l2_setIndex;
+
+      SpliAddress(addr, l2_tag, l2_setIndex); //need to modify
+      SET & l2_set = _l2_sets[l2_setIndex];
+
+      bool l2_hit = l2_set.Find(tag);
+      if ( (! l2_hit) && (accessType == ACCESS_TYPE_LOAD || STORE_ALLOCATION == CACHE_ALLOC::STORE_ALLOCATE))
+      {
+        l2_set.Replace(l2_tag);
+      }
+
+      _l2_access[accessType][l2_hit]++;
+
+      //bring l2 to l1
+
+
+    }
+
+    return hit; //need to modify
 }
 
 // define shortcuts
