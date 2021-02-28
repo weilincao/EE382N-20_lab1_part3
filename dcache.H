@@ -284,20 +284,32 @@ class CACHE_BASE
     CACHE_STATS l2_Misses() const { return SumAccess(false,2);}
     CACHE_STATS l2_Accesses() const { return l2_Hits() + l2_Misses();}
 
-    VOID SplitAddress(const ADDRINT addr, CACHE_TAG & tag, UINT32 & setIndex) const
+    VOID SplitAddress(const ADDRINT addr, CACHE_TAG & tag, UINT32 & setIndex, UINT32 level) const
     {
-        tag = addr >> _lineShift;
-        setIndex = tag & _setIndexMask;
+        
+        tag = addr >> ( (level==1)? _lineShift : _l2_lineShift);
+        setIndex = tag & ( (level==1)? _setIndexMask : _l2_setIndexMask);
     }
 
-    VOID SplitAddress(const ADDRINT addr, CACHE_TAG & tag, UINT32 & setIndex, UINT32 & lineIndex) const
+    VOID SplitAddress(const ADDRINT addr, CACHE_TAG & tag, UINT32 & setIndex, UINT32 & lineIndex, UINT32 level) const
     {
-        const UINT32 lineMask = _lineSize - 1;
-        lineIndex = addr & lineMask;
-        SplitAddress(addr, tag, setIndex);
+        if (level==1 || level ==0)
+        {
+          const UINT32 lineMask = _lineSize - 1;
+          lineIndex = addr & lineMask;
+          SplitAddress(addr, tag, setIndex,1);
+        }
+        else if (level==2)
+        {
+          const UINT32 lineMask = _l2_lineSize - 1;
+          lineIndex = addr & lineMask;
+          SplitAddress(addr, tag, setIndex,2);
+        }  
+
     }
 
-    string StatsLong(string prefix = "", CACHE_TYPE = CACHE_MAX_SETSTYPE_DCACHE) const;
+
+    string StatsLong(string prefix = "", CACHE_TYPE = CACHE_TYPE_DCACHE) const;
 };
 
 CACHE_BASE::CACHE_BASE(std::string name, UINT32 cacheSize, UINT32 lineSize, UINT32 associativity, UINT32 l2_cacheSize, UINT32 l2_lineSize, UINT32 l2_associativity)
@@ -350,16 +362,16 @@ string CACHE_BASE::StatsLong(string prefix, CACHE_TYPE cache_type) const
            std::string type(accessType == ACCESS_TYPE_LOAD ? "Load" : "Store");
 
            out += prefix + ljstr(type + "-Hits:      ", headerWidth)
-                  + mydecstr(Hits(accessType), numberWidth)  +
-                  "  " +fltstr(100.0 * Hits(accessType) / Accesses(accessType), 2, 6) + "%\n";
+                  + mydecstr(l2_Hits(accessType), numberWidth)  +
+                  "  " +fltstr(100.0 * l2_Hits(accessType) / l2_Accesses(accessType), 2, 6) + "%\n";
 
            out += prefix + ljstr(type + "-Misses:    ", headerWidth)
-                  + mydecstr(Misses(accessType), numberWidth) +
-                  "  " +fltstr(100.0 * Misses(accessType) / Accesses(accessType), 2, 6) + "%\n";
+                  + mydecstr(l2_Misses(accessType), numberWidth) +
+                  "  " +fltstr(100.0 * l2_Misses(accessType) / l2_Accesses(accessType), 2, 6) + "%\n";
         
            out += prefix + ljstr(type + "-Accesses:  ", headerWidth)
-                  + mydecstr(Accesses(accessType), numberWidth) +
-                  "  " +fltstr(100.0 * Accesses(accessType) / Accesses(accessType), 2, 6) + "%\n";
+                  + mydecstr(l2_Accesses(accessType), numberWidth) +
+                  "  " +fltstr(100.0 * l2_Accesses(accessType) / l2_Accesses(accessType), 2, 6) + "%\n";
         
            out += prefix + "\n";
        }
@@ -463,7 +475,7 @@ bool CACHE<SET,MAX_SETS,STORE_ALLOCATION>::Access(ADDRINT addr, UINT32 size, ACC
         CACHE_TAG tag;
         UINT32 setIndex;
 
-        SplitAddress(addr, tag, setIndex);
+        SplitAddress(addr, tag, setIndex,1);
 
         SET & set = _sets[setIndex];
 
@@ -494,7 +506,7 @@ bool CACHE<SET,MAX_SETS,STORE_ALLOCATION>::AccessSingleLine(ADDRINT addr, ACCESS
     CACHE_TAG tag;
     UINT32 setIndex;
 
-    SplitAddress(addr, tag, setIndex);
+    SplitAddress(addr, tag, setIndex,1);
 
     SET & set = _sets[setIndex];
 
@@ -513,10 +525,10 @@ bool CACHE<SET,MAX_SETS,STORE_ALLOCATION>::AccessSingleLine(ADDRINT addr, ACCESS
       CACHE_TAG l2_tag;
       UINT32 l2_setIndex;
 
-      SpliAddress(addr, l2_tag, l2_setIndex); //need to modify
+      SplitAddress(addr, l2_tag, l2_setIndex,2);
       SET & l2_set = _l2_sets[l2_setIndex];
 
-      bool l2_hit = l2_set.Find(tag);
+      bool l2_hit = l2_set.Find(l2_tag);
       if ( (! l2_hit) && (accessType == ACCESS_TYPE_LOAD || STORE_ALLOCATION == CACHE_ALLOC::STORE_ALLOCATE))
       {
         l2_set.Replace(l2_tag);
@@ -524,8 +536,8 @@ bool CACHE<SET,MAX_SETS,STORE_ALLOCATION>::AccessSingleLine(ADDRINT addr, ACCESS
 
       _l2_access[accessType][l2_hit]++;
 
-      //bring l2 to l1
-
+      //bring data to l1 to maintain inclusiveness
+      set.Replace(tag);
 
     }
 

@@ -72,7 +72,7 @@ INT32 Usage()
 namespace DL1
 {
     const UINT32 max_sets = KILO; // cacheSize / (lineSize * associativity);
-    const UINT32 max_associativity = 16; // associativity;
+    const UINT32 max_associativity = 32; // associativity;
     const CACHE_ALLOC::STORE_ALLOCATION allocation = CACHE_ALLOC::STORE_ALLOCATE;
 
     typedef CACHE_LRU(max_sets, max_associativity, allocation) CACHE;
